@@ -1,0 +1,2029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskBot — Voice &amp; Text Numbered To-Do List with Timers</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .font-mono-timer {
+      font-family: 'JetBrains Mono', monospace;
+      font-variant-numeric: tabular-nums;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+    @keyframes bell-shake {
+      0%, 100% { transform: rotate(0deg); }
+      20% { transform: rotate(16deg); }
+      40% { transform: rotate(-16deg); }
+      60% { transform: rotate(10deg); }
+      80% { transform: rotate(-10deg); }
+    }
+    @keyframes wave-bar {
+      0%, 100% { height: 6px; }
+      50% { height: 20px; }
+    }
+    .mic-active-pulse {
+      animation: pulse-ring 1.6s infinite;
+    }
+    .bell-ringing {
+      animation: bell-shake 0.6s infinite ease-in-out;
+    }
+    .wave-1 { animation: wave-bar 0.6s infinite ease-in-out 0.0s; }
+    .wave-2 { animation: wave-bar 0.6s infinite ease-in-out 0.15s; }
+    .wave-3 { animation: wave-bar 0.6s infinite ease-in-out 0.3s; }
+    .wave-4 { animation: wave-bar 0.6s infinite ease-in-out 0.45s; }
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.4);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.45);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.7);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col selection:bg-indigo-500 selection:text-white">
+
+  <!-- TOP NAVIGATION & STATUS BAR -->
+  <header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-3 sm:px-6 py-2.5">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <!-- Brand -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-base sm:text-lg tracking-tight text-white">TaskBot Voice</h1>
+            <span class="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">Rule-Based Bot</span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">Voice-Over &amp; Text Numbered To-Do List with Live Alarm Timers</p>
+        </div>
+      </div>
+
+      <!-- Right Controls -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- Live Clock -->
+        <div class="hidden md:flex items-center gap-1.5 bg-slate-800/80 border border-slate-700/70 rounded-lg px-2.5 py-1 text-xs text-slate-300 font-mono-timer">
+          <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
+          </svg>
+          <span id="live-clock">--:--:--</span>
+        </div>
+
+        <!-- Alarm Sound Style -->
+        <div class="flex items-center bg-slate-800/80 border border-slate-700/70 rounded-lg px-2 py-1 text-xs">
+          <label for="tone-select" class="text-slate-400 mr-1.5 hidden sm:inline">Ringtone:</label>
+          <select id="tone-select" onchange="changeRingtone(this.value)" class="bg-transparent text-slate-200 font-medium focus:outline-none cursor-pointer">
+            <option value="classic" class="bg-slate-900">Classic Bell</option>
+            <option value="digital" class="bg-slate-900">Digital Alarm</option>
+            <option value="chime" class="bg-slate-900">Melodic Chime</option>
+          </select>
+        </div>
+
+        <!-- Bot Voice (TTS) Toggle -->
+        <button id="tts-toggle-btn" type="button" onclick="toggleBotSpeech()" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 transition" title="Toggle Chatbot Voice-Over Responses">
+          <svg id="tts-icon-on" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+          <span id="tts-label">Bot Voice: ON</span>
+        </button>
+
+        <!-- Test Ringing Alarm Button -->
+        <button id="test-alarm-btn" type="button" onclick="triggerTestAlarm()" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition" title="Test the alarm ringer immediately">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <span>Test Ring</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile View Tabs -->
+    <div class="flex lg:hidden mt-2.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/70">
+      <button id="tab-chat-btn" type="button" onclick="switchMobileTab('chat')" class="flex-1 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white shadow transition">
+        💬 Voice &amp; Text Bot
+      </button>
+      <button id="tab-tasks-btn" type="button" onclick="switchMobileTab('tasks')" class="flex-1 py-1.5 text-xs font-semibold rounded-md text-slate-300 hover:text-white transition">
+        📋 Numbered Tasks (<span id="mobile-task-count">0</span>)
+      </button>
+    </div>
+  </header>
+
+  <!-- ACTIVE ALARM RINGING BANNER (Hidden until a task timer finishes) -->
+  <div id="alarm-banner" class="hidden sticky top-[61px] z-40 bg-gradient-to-r from-red-600 via-amber-600 to-red-600 text-white px-4 py-3 shadow-2xl border-b border-red-400">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center bell-ringing shrink-0">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-extrabold uppercase tracking-wider bg-black/30 px-2 py-0.5 rounded">⏰ Timer Finished &amp; Ringing!</span>
+          </div>
+          <p id="alarm-banner-text" class="font-bold text-sm sm:text-base mt-0.5">Task #1 is ringing!</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap justify-center">
+        <button id="alarm-complete-btn" type="button" onclick="completeAllRingingTasks()" class="px-3 py-1.5 rounded-lg bg-emerald-950/90 hover:bg-emerald-900 text-emerald-200 border border-emerald-400/40 text-xs font-bold transition shadow">
+          ✓ Complete &amp; Stop
+        </button>
+        <button id="alarm-snooze-1m-btn" type="button" onclick="snoozeRingingTasks(60)" class="px-3 py-1.5 rounded-lg bg-black/30 hover:bg-black/50 text-white border border-white/30 text-xs font-semibold transition">
+          +1 Min Snooze
+        </button>
+        <button id="alarm-snooze-5m-btn" type="button" onclick="snoozeRingingTasks(300)" class="px-3 py-1.5 rounded-lg bg-black/30 hover:bg-black/50 text-white border border-white/30 text-xs font-semibold transition">
+          +5 Min Snooze
+        </button>
+        <button id="alarm-stop-btn" type="button" onclick="stopAllRingingAlarms()" class="px-3 py-1.5 rounded-lg bg-white text-red-700 hover:bg-red-50 text-xs font-extrabold transition shadow">
+          ✕ Stop Ringing
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+    <!-- LEFT COLUMN: VOICE & TEXT CHATBOT (5 cols on desktop) -->
+    <section id="chat-panel" class="lg:col-span-5 flex flex-col bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden h-[calc(100vh-120px)] min-h-[540px] max-h-[820px]">
+      <!-- Chatbot Header -->
+      <div class="px-4 py-3 bg-slate-800/60 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="relative">
+            <div class="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-300 font-bold text-sm">
+              🤖
+            </div>
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-900 absolute -bottom-0.5 -right-0.5"></span>
+          </div>
+          <div>
+            <h2 class="font-semibold text-sm text-white">Task &amp; Timer Chatbot</h2>
+            <p id="mic-capability-status" class="text-[11px] text-slate-400">Speak or type numbered tasks &amp; times</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="toggle-guide-btn" type="button" onclick="toggleCommandGuide()" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+            ? Voice Guide
+          </button>
+          <button id="clear-chat-btn" type="button" onclick="clearChatHistory()" class="text-xs px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition" title="Clear chat messages">
+            Clear Chat
+          </button>
+        </div>
+      </div>
+
+      <!-- Collapsible Voice & Text Command Guide -->
+      <div id="command-guide" class="hidden bg-indigo-950/40 border-b border-indigo-500/30 px-4 py-3 text-xs text-slate-200 space-y-1.5">
+        <div class="flex items-center justify-between">
+          <span class="font-bold text-indigo-300 uppercase tracking-wider text-[11px]">How to Give Tasks by Voice or Text</span>
+          <button type="button" onclick="toggleCommandGuide()" class="text-slate-400 hover:text-white text-xs">✕</button>
+        </div>
+        <ul class="space-y-1 text-slate-300 list-disc pl-4">
+          <li><strong>Numbered List at Once:</strong> <em>"1. Boil eggs for 8 minutes 2. Check emails for 15 minutes 3. Call team at 11:30 AM"</em></li>
+          <li><strong>Spoken Numbers:</strong> <em>"Number 1 stretch for 2 minutes, number 2 read notes for 10 minutes"</em></li>
+          <li><strong>Single Timed Task:</strong> <em>"Task 4 review slides for 5 minutes"</em> or <em>"Remind me to drink water in 30 seconds"</em></li>
+          <li><strong>Bot Commands:</strong> <em>"Start task 1"</em>, <em>"Pause task 2"</em>, <em>"Complete task 1"</em>, <em>"Delete task 3"</em>, <em>"Stop alarm"</em>, or <em>"Show my list"</em></li>
+        </ul>
+      </div>
+
+      <!-- Chat Messages Stream -->
+      <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-950/40">
+        <!-- Populated dynamically by JS -->
+      </div>
+
+      <!-- Live Voice Listening Status Bar (Shown when Mic is active) -->
+      <div id="voice-status-bar" class="hidden px-4 py-2.5 bg-red-950/70 border-t border-red-500/40 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="flex items-center gap-0.5 h-5 shrink-0">
+            <span class="w-1 bg-red-400 rounded-full wave-1"></span>
+            <span class="w-1 bg-red-400 rounded-full wave-2"></span>
+            <span class="w-1 bg-red-400 rounded-full wave-3"></span>
+            <span class="w-1 bg-red-400 rounded-full wave-4"></span>
+          </div>
+          <div class="truncate">
+            <span class="text-xs font-bold text-red-300 uppercase tracking-wider">Listening...</span>
+            <p id="voice-interim-text" class="text-xs text-slate-200 truncate italic">Speak your numbered tasks &amp; timers now...</p>
+          </div>
+        </div>
+        <button id="stop-mic-inline-btn" type="button" onclick="toggleVoiceRecognition()" class="px-2.5 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-semibold shrink-0">
+          Done Speaking
+        </button>
+      </div>
+
+      <!-- Quick Try / Simulated Voice Chips -->
+      <div class="px-3 py-2 bg-slate-900 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        <span class="text-[11px] text-slate-400 shrink-0 font-medium">Quick Try:</span>
+        <button type="button" onclick="runQuickVoiceSample('1. Prepare morning tea for 2 minutes 2. Review project report for 15 minutes 3. Call client at 5:00 PM')" class="shrink-0 text-[11px] px-2.5 py-1 rounded-full bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 transition">
+          🎤 "1. Tea 2m, 2. Report 15m, 3. Call 5 PM"
+        </button>
+        <button type="button" onclick="runQuickVoiceSample('Number 1 quick stretch for 10 seconds')" class="shrink-0 text-[11px] px-2.5 py-1 rounded-full bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition">
+          ⏱️ "Number 1 stretch for 10 seconds"
+        </button>
+        <button type="button" onclick="runQuickVoiceSample('Show my list')" class="shrink-0 text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+          📋 "Show my list"
+        </button>
+      </div>
+
+      <!-- Chat Input & Voice Controls Footer -->
+      <div class="p-3 bg-slate-900 border-t border-slate-800">
+        <div class="flex items-center justify-between mb-2 px-1">
+          <label class="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer select-none">
+            <input id="auto-send-voice" type="checkbox" checked class="rounded border-slate-700 bg-slate-800 text-indigo-500 focus:ring-0" />
+            <span>Auto-send when voice-over finishes</span>
+          </label>
+          <label class="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer select-none">
+            <input id="auto-start-timers" type="checkbox" checked class="rounded border-slate-700 bg-slate-800 text-indigo-500 focus:ring-0" />
+            <span>Auto-start task timers immediately</span>
+          </label>
+        </div>
+
+        <form id="chat-form" onsubmit="handleChatSubmit(event)" class="flex items-center gap-2">
+          <!-- Microphone Button -->
+          <button id="mic-btn" type="button" onclick="toggleVoiceRecognition()" class="w-11 h-11 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center shrink-0 transition relative" title="Start/Stop Voice-Over Input">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+            </svg>
+          </button>
+
+          <!-- Text Input -->
+          <input
+            id="chat-input"
+            type="text"
+            placeholder="Speak or type: e.g. 1. Study 20m 2. Break 5m..."
+            autocomplete="off"
+            class="flex-1 h-11 px-3.5 rounded-xl bg-slate-950 border border-slate-700/80 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+          />
+
+          <!-- Send Button -->
+          <button id="send-btn" type="submit" class="h-11 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm flex items-center gap-1.5 shrink-0 shadow-lg shadow-indigo-600/20 transition">
+            <span>Send</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+            </svg>
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- RIGHT COLUMN: NUMBERED TO-DO LIST & LIVE TIMERS (7 cols on desktop) -->
+    <section id="tasks-panel" class="lg:col-span-7 flex flex-col gap-4">
+
+      <!-- KPI Summary Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between">
+          <div>
+            <p class="text-[11px] font-medium uppercase tracking-wider text-slate-400">Total Tasks</p>
+            <p id="stat-total" class="text-2xl font-bold text-white mt-0.5">0</p>
+          </div>
+          <div class="w-9 h-9 rounded-lg bg-indigo-500/15 text-indigo-400 flex items-center justify-center font-bold">#</div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between">
+          <div>
+            <p class="text-[11px] font-medium uppercase tracking-wider text-slate-400">Active Timers</p>
+            <p id="stat-running" class="text-2xl font-bold text-amber-400 mt-0.5">0</p>
+          </div>
+          <div class="w-9 h-9 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center">⏱️</div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between">
+          <div>
+            <p class="text-[11px] font-medium uppercase tracking-wider text-slate-400">Ringing Now</p>
+            <p id="stat-ringing" class="text-2xl font-bold text-red-400 mt-0.5">0</p>
+          </div>
+          <div class="w-9 h-9 rounded-lg bg-red-500/15 text-red-400 flex items-center justify-center">🔔</div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between">
+          <div>
+            <p class="text-[11px] font-medium uppercase tracking-wider text-slate-400">Completed</p>
+            <p id="stat-completed" class="text-2xl font-bold text-emerald-400 mt-0.5">0</p>
+          </div>
+          <div class="w-9 h-9 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center">✓</div>
+        </div>
+      </div>
+
+      <!-- Task List Main Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden flex flex-col">
+
+        <!-- Filter & Action Toolbar -->
+        <div class="p-3.5 sm:px-5 bg-slate-800/50 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <!-- Filter Pills -->
+          <div class="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800">
+            <button id="filter-all" type="button" onclick="setTaskFilter('all')" class="px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition">
+              All
+            </button>
+            <button id="filter-pending" type="button" onclick="setTaskFilter('pending')" class="px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition">
+              Pending
+            </button>
+            <button id="filter-timed" type="button" onclick="setTaskFilter('timed')" class="px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition">
+              With Timers
+            </button>
+            <button id="filter-completed" type="button" onclick="setTaskFilter('completed')" class="px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition">
+              Done
+            </button>
+          </div>
+
+          <!-- Bulk Controls -->
+          <div class="flex items-center gap-2 flex-wrap">
+            <!-- Sequential Queue Toggle -->
+            <button id="seq-mode-btn" type="button" onclick="toggleSequentialMode()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="When enabled, finishing Task #1 automatically starts Task #2's timer">
+              Mode: <span id="seq-mode-label" class="text-indigo-300 font-semibold">Simultaneous</span>
+            </button>
+
+            <button id="open-manual-modal-btn" type="button" onclick="toggleManualTaskForm()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition flex items-center gap-1 shadow">
+              <span>+ Add Task</span>
+            </button>
+
+            <button id="start-all-btn" type="button" onclick="startAllTimers()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition">
+              ▶ Start All
+            </button>
+
+            <button id="pause-all-btn" type="button" onclick="pauseAllTimers()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition">
+              ⏸ Pause All
+            </button>
+
+            <button id="clear-completed-btn" type="button" onclick="clearCompletedTasks()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+              Clear Done
+            </button>
+          </div>
+        </div>
+
+        <!-- Inline Quick Manual Task Form (Collapsible) -->
+        <div id="manual-task-form-wrap" class="hidden bg-slate-950/80 border-b border-slate-800 p-4">
+          <div class="flex items-center justify-between mb-2.5">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-indigo-300">Add or Update Numbered Task Manually</h3>
+            <button type="button" onclick="toggleManualTaskForm()" class="text-xs text-slate-400 hover:text-white">✕ Close</button>
+          </div>
+          <form id="manual-task-form" onsubmit="handleManualTaskSubmit(event)" class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+            <div class="sm:col-span-2">
+              <label for="manual-num" class="block text-[11px] text-slate-400 mb-1">Task #</label>
+              <input id="manual-num" type="number" min="1" placeholder="Auto" class="w-full h-9 px-2.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div class="sm:col-span-5">
+              <label for="manual-title" class="block text-[11px] text-slate-400 mb-1">Task Description</label>
+              <input id="manual-title" type="text" required placeholder="e.g. Call supplier about order" class="w-full h-9 px-3 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div class="sm:col-span-3">
+              <label for="manual-time" class="block text-[11px] text-slate-400 mb-1">Timer / Clock Time</label>
+              <input id="manual-time" type="text" placeholder="e.g. 10m, 45s, or 5:30 PM" class="w-full h-9 px-3 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div class="sm:col-span-2 flex items-end">
+              <button type="submit" class="w-full h-9 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition">
+                Save Task
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Numbered Tasks Container -->
+        <div id="task-list" class="p-4 space-y-3 max-h-[600px] overflow-y-auto">
+          <!-- Populated dynamically by JS -->
+        </div>
+
+        <!-- Footer Info Bar -->
+        <div class="px-4 py-2.5 bg-slate-950/60 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+          <span>💡 Tip: Say <strong>"1. Task name for 10 minutes 2. Next task for 5 minutes"</strong> to add multiple numbered tasks at once.</span>
+          <button id="renumber-btn" type="button" onclick="renumberTasksSequentially()" class="text-indigo-400 hover:text-indigo-300 font-medium underline">
+            Re-order &amp; Fix Numbers (1..N)
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- EDIT TASK & TIMER MODAL -->
+  <div id="edit-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="font-bold text-base text-white">Edit Task &amp; Alarm Timer</h3>
+        <button type="button" onclick="closeEditModal()" class="text-slate-400 hover:text-white text-sm">✕</button>
+      </div>
+      <form id="edit-task-form" onsubmit="saveEditedTask(event)" class="space-y-3.5 mt-4">
+        <input id="edit-task-id" type="hidden" />
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label for="edit-task-num" class="block text-xs text-slate-400 mb-1">Task Number (#)</label>
+            <input id="edit-task-num" type="number" min="1" required class="w-full h-10 px-3 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+          <div class="col-span-2">
+            <label for="edit-task-title" class="block text-xs text-slate-400 mb-1">Task Title</label>
+            <input id="edit-task-title" type="text" required class="w-full h-10 px-3 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+        </div>
+
+        <div>
+          <label for="edit-task-time-str" class="block text-xs text-slate-400 mb-1">New Duration or Clock Time (leave blank to keep current)</label>
+          <input id="edit-task-time-str" type="text" placeholder="e.g. 15 minutes, 30 seconds, or at 6:00 PM" class="w-full h-10 px-3 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          <div class="flex items-center gap-1.5 mt-2 flex-wrap">
+            <span class="text-[11px] text-slate-400">Presets:</span>
+            <button type="button" onclick="setEditTimePreset('10 seconds')" class="text-[11px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">10s</button>
+            <button type="button" onclick="setEditTimePreset('1 minute')" class="text-[11px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">1m</button>
+            <button type="button" onclick="setEditTimePreset('5 minutes')" class="text-[11px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">5m</button>
+            <button type="button" onclick="setEditTimePreset('15 minutes')" class="text-[11px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">15m</button>
+            <button type="button" onclick="setEditTimePreset('30 minutes')" class="text-[11px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">30m</button>
+            <button type="button" onclick="setEditTimePreset('none')" class="text-[11px] px-2 py-0.5 rounded bg-red-950/60 hover:bg-red-900/60 text-red-300">Remove Timer</button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+          <button type="button" onclick="closeEditModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">
+            Cancel
+          </button>
+          <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white">
+            Update Task
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+
+  <script>
+    // =========================================================================
+    // STATE & STORAGE
+    // =========================================================================
+    const STORAGE_KEY = 'taskbot_voice_tasks_v1';
+    let tasks = [];
+    let chatMessages = [];
+    let currentFilter = 'all';
+    let sequentialMode = false;
+    let botSpeechEnabled = true;
+    let selectedRingtone = 'classic';
+
+    // Web Audio API & Alarm Loop State
+    let audioCtx = null;
+    let alarmLoopInterval = null;
+    let mainTickInterval = null;
+
+    // Web Speech API (STT) State
+    let recognition = null;
+    let isListening = false;
+    let speechTranscriptBuffer = '';
+
+    // Spoken number words mapping
+    const WORD_TO_NUM = {
+      'one': 1, 'first': 1, '1st': 1,
+      'two': 2, 'second': 2, '2nd': 2,
+      'three': 3, 'third': 3, '3rd': 3,
+      'four': 4, 'fourth': 4, '4th': 4,
+      'five': 5, 'fifth': 5, '5th': 5,
+      'six': 6, 'sixth': 6, '6th': 6,
+      'seven': 7, 'seventh': 7, '7th': 7,
+      'eight': 8, 'eighth': 8, '8th': 8,
+      'nine': 9, 'ninth': 9, '9th': 9,
+      'ten': 10, 'tenth': 10, '10th': 10,
+      'eleven': 11, 'twelve': 12, 'fifteen': 15,
+      'twenty': 20, 'thirty': 30, 'forty': 40, 'forty-five': 45, 'fifty': 50, 'sixty': 60
+    };
+
+    // =========================================================================
+    // INITIALIZATION
+    // =========================================================================
+    function initApp() {
+      loadTasksFromStorage();
+      setupSpeechRecognition();
+      updateClock();
+
+      if (mainTickInterval) clearInterval(mainTickInterval);
+      mainTickInterval = setInterval(() => {
+        updateClock();
+        tickTimers();
+      }, 1000);
+
+      // Initial welcome chat message from the chatbot
+      if (chatMessages.length === 0) {
+        addChatMessage(
+          'bot',
+          "Hello! I'm your **Voice & Text To-Do Chatbot**. 🎤⌨️\n\nYou can give me tasks **number-wise** by voice-over or typing, along with a **timer or clock time** for each task. When any timer finishes, I'll start **ringing** automatically!\n\nTry saying or typing:\n• *\"1. Boil water for 2 minutes 2. Review notes for 15 minutes 3. Call Alex at 6:00 PM\"*\n• *\"Number 1 stretch for 10 seconds\"*\n• *\"Complete task 1\"* or *\"Stop alarm\"*"
+        );
+      }
+
+      renderChatMessages();
+      renderTasks();
+    }
+
+    function loadTasksFromStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            tasks = parsed.map(t => ({
+              ...t,
+              // Ensure ringing state is reset on reload so it doesn't get stuck
+              ringing: false
+            }));
+            return;
+          }
+        }
+      } catch (err) {
+        // Ignore storage errors inside sandboxed iframes
+      }
+
+      // Default starter numbered tasks so the user immediately sees how it works
+      tasks = [
+        {
+          id: 'task-' + Date.now() + '-1',
+          num: 1,
+          title: 'Review daily priority list',
+          totalSeconds: 180,
+          remainingSeconds: 180,
+          targetClockLabel: null,
+          running: false,
+          completed: false,
+          ringing: false,
+          source: 'voice',
+          createdAt: Date.now()
+        },
+        {
+          id: 'task-' + Date.now() + '-2',
+          num: 2,
+          title: 'Reply to client messages',
+          totalSeconds: 600,
+          remainingSeconds: 600,
+          targetClockLabel: null,
+          running: false,
+          completed: false,
+          ringing: false,
+          source: 'text',
+          createdAt: Date.now() + 1
+        }
+      ];
+    }
+
+    function saveTasksToStorage() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+      } catch (err) {
+        // Ignore storage errors
+      }
+    }
+
+    function updateClock() {
+      const el = document.getElementById('live-clock');
+      if (!el) return;
+      const now = new Date();
+      el.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    // =========================================================================
+    // WEB AUDIO API SYNTHESIZED ALARM RINGER (NO EXTERNAL FILES REQUIRED)
+    // =========================================================================
+    function ensureAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtx = new AudioContextClass();
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
+    }
+
+    function playSingleRingBurst() {
+      ensureAudioContext();
+      if (!audioCtx) return;
+
+      const now = audioCtx.currentTime;
+
+      if (selectedRingtone === 'classic') {
+        // Classic dual-chime bell ring
+        const freqs = [880, 1174.66, 880, 1174.66];
+        freqs.forEach((f, idx) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(f, now + idx * 0.14);
+          gain.gain.setValueAtTime(0.001, now + idx * 0.14);
+          gain.gain.exponentialRampToValueAtTime(0.28, now + idx * 0.14 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.14 + 0.12);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now + idx * 0.14);
+          osc.stop(now + idx * 0.14 + 0.13);
+        });
+      } else if (selectedRingtone === 'digital') {
+        // Crisp digital alarm beep-beep-beep
+        for (let i = 0; i < 3; i++) {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(1046.5, now + i * 0.12);
+          gain.gain.setValueAtTime(0.15, now + i * 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.08);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now + i * 0.12);
+          osc.stop(now + i * 0.12 + 0.09);
+        }
+      } else {
+        // Melodic harmonic chime
+        const notes = [523.25, 659.25, 783.99, 1046.5];
+        notes.forEach((f, idx) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(f, now + idx * 0.11);
+          gain.gain.setValueAtTime(0.24, now + idx * 0.11);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.11 + 0.35);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now + idx * 0.11);
+          osc.stop(now + idx * 0.11 + 0.36);
+        });
+      }
+    }
+
+    function syncAlarmLoop() {
+      const anyRinging = tasks.some(t => t.ringing && !t.completed);
+      const banner = document.getElementById('alarm-banner');
+      const bannerText = document.getElementById('alarm-banner-text');
+
+      if (anyRinging) {
+        const ringingList = tasks.filter(t => t.ringing && !t.completed);
+        const summary = ringingList.map(t => `Task #${t.num}: "${t.title}"`).join(' • ');
+        if (bannerText) bannerText.textContent = summary;
+        if (banner) banner.classList.remove('hidden');
+
+        if (!alarmLoopInterval) {
+          playSingleRingBurst();
+          alarmLoopInterval = setInterval(() => {
+            const stillRinging = tasks.some(t => t.ringing && !t.completed);
+            if (!stillRinging) {
+              clearInterval(alarmLoopInterval);
+              alarmLoopInterval = null;
+              if (banner) banner.classList.add('hidden');
+            } else {
+              playSingleRingBurst();
+            }
+          }, 1400);
+        }
+      } else {
+        if (alarmLoopInterval) {
+          clearInterval(alarmLoopInterval);
+          alarmLoopInterval = null;
+        }
+        if (banner) banner.classList.add('hidden');
+      }
+    }
+
+    function changeRingtone(val) {
+      selectedRingtone = val;
+      playSingleRingBurst();
+      showToast(`Ringtone set to ${val}.`, 'info');
+    }
+
+    function triggerTestAlarm() {
+      ensureAudioContext();
+      playSingleRingBurst();
+      // Also create or trigger a quick ringing demo banner if no task is ringing
+      const existingDemo = tasks.find(t => t.title === 'Demo Alarm Test');
+      if (existingDemo) {
+        existingDemo.completed = false;
+        existingDemo.remainingSeconds = 0;
+        existingDemo.running = false;
+        existingDemo.ringing = true;
+      } else {
+        const nextNum = getNextTaskNumber();
+        tasks.push({
+          id: 'task-' + Date.now() + '-demo',
+          num: nextNum,
+          title: 'Demo Alarm Test',
+          totalSeconds: 5,
+          remainingSeconds: 0,
+          targetClockLabel: null,
+          running: false,
+          completed: false,
+          ringing: true,
+          source: 'bot',
+          createdAt: Date.now()
+        });
+      }
+      speakBotText('Alarm test ringing now! Click Stop Ringing when ready.');
+      syncAlarmLoop();
+      renderTasks();
+      showToast('Alarm is ringing! Use the red banner at the top to stop or snooze.', 'warning');
+    }
+
+    function stopAllRingingAlarms() {
+      let count = 0;
+      tasks.forEach(t => {
+        if (t.ringing) {
+          t.ringing = false;
+          t.running = false;
+          count++;
+        }
+      });
+      syncAlarmLoop();
+      saveTasksToStorage();
+      renderTasks();
+      if (count > 0) {
+        addChatMessage('bot', `🔕 Stopped ringing alarm for ${count} task${count > 1 ? 's' : ''}.`);
+        renderChatMessages();
+      }
+    }
+
+    function completeAllRingingTasks() {
+      const completedNums = [];
+      tasks.forEach(t => {
+        if (t.ringing) {
+          t.ringing = false;
+          t.running = false;
+          t.completed = true;
+          completedNums.push(`#${t.num}`);
+        }
+      });
+      syncAlarmLoop();
+      if (sequentialMode) {
+        startNextSequentialTimer();
+      }
+      saveTasksToStorage();
+      renderTasks();
+      if (completedNums.length > 0) {
+        addChatMessage('bot', `✅ Marked ringing task${completedNums.length > 1 ? 's' : ''} ${completedNums.join(', ')} as completed and silenced the alarm.`);
+        renderChatMessages();
+      }
+    }
+
+    function snoozeRingingTasks(seconds) {
+      const snoozedNums = [];
+      tasks.forEach(t => {
+        if (t.ringing) {
+          t.ringing = false;
+          t.totalSeconds = Math.max(t.totalSeconds, seconds);
+          t.remainingSeconds = seconds;
+          t.running = true;
+          snoozedNums.push(`#${t.num}`);
+        }
+      });
+      syncAlarmLoop();
+      saveTasksToStorage();
+      renderTasks();
+      const mins = Math.round(seconds / 60);
+      addChatMessage('bot', `💤 Snoozed ${snoozedNums.join(', ')} for ${mins} minute${mins > 1 ? 's' : ''}.`);
+      renderChatMessages();
+    }
+
+    // =========================================================================
+    // LIVE TIMER TICK ENGINE
+    // =========================================================================
+    function tickTimers() {
+      let changed = false;
+      let newlyRinging = [];
+
+      tasks.forEach(task => {
+        if (task.running && !task.completed && task.remainingSeconds > 0) {
+          task.remainingSeconds -= 1;
+          changed = true;
+          if (task.remainingSeconds <= 0) {
+            task.remainingSeconds = 0;
+            task.running = false;
+            task.ringing = true;
+            newlyRinging.push(task);
+          }
+        }
+      });
+
+      if (newlyRinging.length > 0) {
+        newlyRinging.forEach(t => {
+          const msg = `🔔 **TIME IS UP for Task #${t.num}: ${t.title}!** Alarm is ringing now.`;
+          addChatMessage('bot', msg);
+          speakBotText(`Time is up for task number ${t.num}: ${t.title}`);
+        });
+        renderChatMessages();
+        syncAlarmLoop();
+      }
+
+      if (changed || newlyRinging.length > 0) {
+        saveTasksToStorage();
+        renderTasks();
+      }
+    }
+
+    function startNextSequentialTimer() {
+      const anyRunning = tasks.some(t => t.running && !t.completed);
+      if (anyRunning) return;
+      const sorted = [...tasks].sort((a, b) => a.num - b.num);
+      const nextTask = sorted.find(t => !t.completed && t.remainingSeconds > 0 && !t.running);
+      if (nextTask) {
+        nextTask.running = true;
+        showToast(`Sequential Mode: Started Task #${nextTask.num}`, 'info');
+      }
+    }
+
+    // =========================================================================
+    // SPEECH SYNTHESIS (BOT VOICE-OVER OUTPUT)
+    // =========================================================================
+    function toggleBotSpeech() {
+      botSpeechEnabled = !botSpeechEnabled;
+      const btn = document.getElementById('tts-toggle-btn');
+      const label = document.getElementById('tts-label');
+      if (botSpeechEnabled) {
+        if (label) label.textContent = 'Bot Voice: ON';
+        if (btn) {
+          btn.className = 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 transition';
+        }
+        speakBotText('Bot voice enabled.');
+      } else {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+        if (label) label.textContent = 'Bot Voice: OFF';
+        if (btn) {
+          btn.className = 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition';
+        }
+      }
+    }
+
+    function speakBotText(text) {
+      if (!botSpeechEnabled || !('speechSynthesis' in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const clean = text
+          .replace(/\*\*/g, '')
+          .replace(/\*/g, '')
+          .replace(/[🎤⌨️🤖✅🔔🔕💤⏱️📋🗑️⏸▶]/g, '')
+          .trim();
+        const utter = new SpeechSynthesisUtterance(clean);
+        utter.rate = 1.03;
+        utter.pitch = 1.0;
+        window.speechSynthesis.speak(utter);
+      } catch (e) {
+        // Ignore TTS errors
+      }
+    }
+
+    // =========================================================================
+    // SPEECH RECOGNITION (VOICE-OVER INPUT)
+    // =========================================================================
+    function setupSpeechRecognition() {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const statusEl = document.getElementById('mic-capability-status');
+
+      if (!SpeechRec) {
+        if (statusEl) {
+          statusEl.textContent = 'Voice API unavailable in this browser — use Quick Try or Text below';
+        }
+        return;
+      }
+
+      recognition = new SpeechRec();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        isListening = true;
+        speechTranscriptBuffer = '';
+        updateMicUI(true);
+      };
+
+      recognition.onresult = (event) => {
+        let interim = '';
+        let finalChunk = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalChunk += transcript + ' ';
+          } else {
+            interim += transcript;
+          }
+        }
+
+        if (finalChunk) {
+          speechTranscriptBuffer = (speechTranscriptBuffer + ' ' + finalChunk).trim();
+          const inputEl = document.getElementById('chat-input');
+          if (inputEl) inputEl.value = speechTranscriptBuffer;
+        }
+
+        const interimEl = document.getElementById('voice-interim-text');
+        if (interimEl) {
+          interimEl.textContent = (speechTranscriptBuffer + ' ' + interim).trim() || 'Listening for numbered tasks...';
+        }
+      };
+
+      recognition.onerror = (event) => {
+        isListening = false;
+        updateMicUI(false);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          showToast('Microphone permission is blocked by browser/iframe settings. Try the 🎤 Quick Try voice buttons or type directly!', 'warning');
+        } else if (event.error !== 'aborted' && event.error !== 'no-speech') {
+          showToast('Voice recognition paused (' + event.error + ').', 'info');
+        }
+      };
+
+      recognition.onend = () => {
+        const wasListening = isListening;
+        isListening = false;
+        updateMicUI(false);
+
+        const inputEl = document.getElementById('chat-input');
+        const autoSend = document.getElementById('auto-send-voice');
+        const finalTranscript = (inputEl ? inputEl.value : speechTranscriptBuffer).trim();
+
+        if (wasListening && finalTranscript && autoSend && autoSend.checked) {
+          processUserMessage(finalTranscript, 'voice');
+          if (inputEl) inputEl.value = '';
+          speechTranscriptBuffer = '';
+        }
+      };
+    }
+
+    function toggleVoiceRecognition() {
+      ensureAudioContext();
+      if (!recognition) {
+        showToast('Web Speech API is not supported in this browser window. Use the 🎤 Quick Try chips or text input!', 'warning');
+        return;
+      }
+
+      if (isListening) {
+        try {
+          recognition.stop();
+        } catch (e) {}
+      } else {
+        try {
+          const inputEl = document.getElementById('chat-input');
+          speechTranscriptBuffer = inputEl ? inputEl.value.trim() : '';
+          recognition.start();
+        } catch (e) {
+          showToast('Could not start microphone. Try clicking a 🎤 Quick Try voice chip!', 'warning');
+        }
+      }
+    }
+
+    function updateMicUI(active) {
+      const micBtn = document.getElementById('mic-btn');
+      const statusBar = document.getElementById('voice-status-bar');
+      if (active) {
+        if (micBtn) {
+          micBtn.className = 'w-11 h-11 rounded-xl bg-red-600 hover:bg-red-500 text-white border border-red-400 flex items-center justify-center shrink-0 transition relative mic-active-pulse';
+        }
+        if (statusBar) statusBar.classList.remove('hidden');
+      } else {
+        if (micBtn) {
+          micBtn.className = 'w-11 h-11 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center shrink-0 transition relative';
+        }
+        if (statusBar) statusBar.classList.add('hidden');
+      }
+    }
+
+    function runQuickVoiceSample(sampleText) {
+      ensureAudioContext();
+      processUserMessage(sampleText, 'voice');
+    }
+
+    // =========================================================================
+    // RULE-BASED NUMBERED TASK & TIMER PARSER (CHATBOT BRAIN)
+    // =========================================================================
+    function replaceSpokenNumbersInTime(str) {
+      return str.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|forty-five|fifty|sixty)\b(?=\s*(?:hour|hr|minute|min|second|sec|s|m|h)\b)/gi, (match) => {
+        return WORD_TO_NUM[match.toLowerCase()] || match;
+      });
+    }
+
+    /**
+     * Extracts duration (in seconds) OR target clock time from a task string.
+     * Returns { cleanTitle, totalSeconds, targetClockLabel }
+     */
+    function extractTimeFromTaskSegment(rawSegment) {
+      let text = replaceSpokenNumbersInTime(rawSegment.trim());
+      let totalSeconds = 0;
+      let targetClockLabel = null;
+
+      // 1. Check for "half an hour"
+      if (/\b(?:for\s+|in\s+)?half\s+an?\s+hour\b/i.test(text)) {
+        totalSeconds += 1800;
+        text = text.replace(/\b(?:for\s+|in\s+)?half\s+an?\s+hour\b/i, ' ');
+      }
+
+      // 2. Check for specific clock time: e.g. "at 5:30 PM", "at 10 am", "at 14:20"
+      const clockRegex = /\b(?:at|by|around)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\b/i;
+      const clockMatch = text.match(clockRegex);
+      if (clockMatch && (clockMatch[2] !== undefined || clockMatch[3] !== undefined)) {
+        let hours = parseInt(clockMatch[1], 10);
+        const mins = clockMatch[2] ? parseInt(clockMatch[2], 10) : 0;
+        const meridiem = clockMatch[3] ? clockMatch[3].toLowerCase().replace(/\./g, '') : null;
+
+        if (meridiem === 'pm' && hours < 12) hours += 12;
+        if (meridiem === 'am' && hours === 12) hours = 0;
+
+        const now = new Date();
+        const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, mins, 0, 0);
+        if (target.getTime() <= now.getTime()) {
+          // Schedule for tomorrow if that clock time already passed today
+          target.setDate(target.getDate() + 1);
+        }
+        const diffSec = Math.max(5, Math.round((target.getTime() - now.getTime()) / 1000));
+        totalSeconds = diffSec;
+        targetClockLabel = target.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        text = text.replace(clockRegex, ' ');
+      }
+
+      // 3. Check for duration expressions: e.g. "for 10 minutes 30 seconds", "in 15 mins", "20m", "45s", "1 hour"
+      const durRegex = /\b(?:for|in|after|timer|set\s+for)?\s*(\d+(?:\.\d+)?)\s*(hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\b/gi;
+      let match;
+      let matchedDuration = false;
+      while ((match = durRegex.exec(text)) !== null) {
+        const val = parseFloat(match[1]);
+        const unit = match[2].toLowerCase();
+        if (unit.startsWith('h')) {
+          totalSeconds += Math.round(val * 3600);
+          matchedDuration = true;
+        } else if (unit.startsWith('m')) {
+          totalSeconds += Math.round(val * 60);
+          matchedDuration = true;
+        } else if (unit.startsWith('s')) {
+          totalSeconds += Math.round(val);
+          matchedDuration = true;
+        }
+      }
+
+      if (matchedDuration) {
+        text = text.replace(durRegex, ' ');
+      }
+
+      // Clean leftover trailing prepositions like "for", "in", "at", punctuation
+      let cleanTitle = text
+        .replace(/\b(?:for|in|at|by|with\s+timer|timer)\s*$/i, '')
+        .replace(/^[\s,.:;-]+|[\s,.:;-]+$/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+      if (!cleanTitle) {
+        cleanTitle = 'Scheduled Task';
+      } else {
+        cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
+      }
+
+      return {
+        cleanTitle,
+        totalSeconds,
+        targetClockLabel
+      };
+    }
+
+    /**
+     * Splits a user message into numbered tasks if numbered markers exist.
+     * Supports: "1. Buy milk 2. Call mom", "Number 1 ...", "Task 1 ...", "One ... Two ..."
+     */
+    function parseNumberedTasksFromInput(rawInput) {
+      let normalized = rawInput.trim();
+
+      // Convert spoken markers like "number one", "task two" into "#1:", "#2:"
+      normalized = normalized.replace(/\b(?:task|number|no\.?|item)\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b[:.)-]*/gi, (_, numToken) => {
+        const n = WORD_TO_NUM[numToken.toLowerCase()] || parseInt(numToken, 10);
+        return ` ||SPLIT||#${n}: `;
+      });
+
+      // Convert standalone numeric list markers like "1.", "1)", "(1)", "1 -" at start or after spaces/punctuation
+      normalized = normalized.replace(/(?:^|\s|[,;])(\d{1,2})\s*[.):-]\s+/g, (_, digits) => {
+        return ` ||SPLIT||#${digits}: `;
+      });
+
+      // Also support spoken ordinals at start of clauses: "First ... Second ... Third ..."
+      if (!normalized.includes('||SPLIT||')) {
+        const ordinalPattern = /\b(first|second|third|fourth|fifth)\b[,:\s]+/gi;
+        const matches = normalized.match(ordinalPattern);
+        if (matches && matches.length >= 2) {
+          normalized = normalized.replace(ordinalPattern, (_, ord) => {
+            const n = WORD_TO_NUM[ord.toLowerCase()];
+            return ` ||SPLIT||#${n}: `;
+          });
+        }
+      }
+
+      const chunks = normalized.split('||SPLIT||').map(s => s.trim()).filter(Boolean);
+      const parsedItems = [];
+
+      if (chunks.length > 1 || (chunks.length === 1 && /^#\d+:/.test(chunks[0]))) {
+        chunks.forEach(chunk => {
+          const m = chunk.match(/^#(\d+):\s*(.*)$/);
+          if (m) {
+            const explicitNum = parseInt(m[1], 10);
+            const body = m[2].trim();
+            if (body) {
+              const extracted = extractTimeFromTaskSegment(body);
+              parsedItems.push({
+                num: explicitNum,
+                title: extracted.cleanTitle,
+                totalSeconds: extracted.totalSeconds,
+                targetClockLabel: extracted.targetClockLabel
+              });
+            }
+          }
+        });
+      }
+
+      return parsedItems;
+    }
+
+    function getNextTaskNumber() {
+      if (tasks.length === 0) return 1;
+      return Math.max(...tasks.map(t => t.num)) + 1;
+    }
+
+    function formatDuration(sec) {
+      const s = Math.max(0, Math.floor(sec));
+      const hrs = Math.floor(s / 3600);
+      const mins = Math.floor((s % 3600) / 60);
+      const remSec = s % 60;
+      if (hrs > 0) {
+        return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
+      }
+      return `${String(mins).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
+    }
+
+    function formatDurationReadable(sec) {
+      if (!sec || sec <= 0) return 'No timer';
+      const hrs = Math.floor(sec / 3600);
+      const mins = Math.floor((sec % 3600) / 60);
+      const remSec = sec % 60;
+      const parts = [];
+      if (hrs > 0) parts.push(`${hrs}h`);
+      if (mins > 0) parts.push(`${mins}m`);
+      if (remSec > 0) parts.push(`${remSec}s`);
+      return parts.join(' ');
+    }
+
+    /**
+     * Main Chatbot Message Processor (Rule-Based Commands + Numbered Task Note-Taker)
+     */
+    function processUserMessage(rawText, source = 'text') {
+      const text = rawText.trim();
+      if (!text) return;
+
+      ensureAudioContext();
+      addChatMessage('user', text, source);
+
+      const lower = text.toLowerCase();
+      const autoStartEl = document.getElementById('auto-start-timers');
+      const shouldAutoStart = autoStartEl ? autoStartEl.checked : true;
+
+      // 1. Check for "stop alarm" / "stop ringing" / "silence"
+      if (/\b(stop\s+alarm|stop\s+ringing|silence|quiet|dismiss\s+alarm)\b/i.test(lower)) {
+        stopAllRingingAlarms();
+        return;
+      }
+
+      // 2. Check for "help"
+      if (/^(help|commands|what can you do|\?)$/i.test(lower)) {
+        const reply = "Here is what you can say or type to me:\n" +
+          "• **Add Numbered List:** *\"1. Read chapter for 20 minutes 2. Make coffee for 5 minutes\"*\n" +
+          "• **Add Single Task:** *\"Task 3 call client at 4:30 PM\"* or *\"Stretch for 30 seconds\"*\n" +
+          "• **Complete a Task:** *\"Complete task 1\"* or *\"Done 2\"*\n" +
+          "• **Control Timers:** *\"Start task 1\"*, *\"Pause task 2\"*, *\"Reset task 1\"*, or *\"Set task 1 timer to 10 minutes\"*\n" +
+          "• **Delete / Clear:** *\"Delete task 2\"*, *\"Clear completed\"*, or *\"Clear all\"*";
+        addChatMessage('bot', reply);
+        speakBotText('I can note down your numbered tasks, set countdown or clock alarms, and control any task by its number.');
+        renderChatMessages();
+        return;
+      }
+
+      // 3. Check for "show my list" / "read my tasks" / "status"
+      if (/\b(show\s+(?:my\s+)?(?:list|tasks)|read\s+(?:my\s+)?(?:list|tasks)|what\s+are\s+my\s+tasks|list\s+tasks|status)\b/i.test(lower)) {
+        if (tasks.length === 0) {
+          const emptyMsg = "Your numbered to-do list is currently empty. Give me tasks like: *\"1. Check email for 10 minutes 2. Call Sam for 5 minutes\"*!";
+          addChatMessage('bot', emptyMsg);
+          speakBotText('Your to-do list is currently empty.');
+        } else {
+          const sorted = [...tasks].sort((a, b) => a.num - b.num);
+          const lines = sorted.map(t => {
+            const statusIcon = t.completed ? '✅' : (t.ringing ? '🔔 RINGING' : (t.running ? '⏱️ Running' : '⏳ Pending'));
+            const timerInfo = t.totalSeconds > 0 ? ` (${formatDuration(t.remainingSeconds)})` : '';
+            return `**#${t.num}** ${t.title} — ${statusIcon}${timerInfo}`;
+          });
+          const summaryMsg = `📋 **Your Numbered To-Do List (${tasks.length} item${tasks.length > 1 ? 's' : ''}):**\n` + lines.join('\n');
+          addChatMessage('bot', summaryMsg);
+          const spokenSummary = sorted.map(t => `Number ${t.num}: ${t.title}`).join('. ');
+          speakBotText(`You have ${tasks.length} tasks. ${spokenSummary}`);
+        }
+        renderChatMessages();
+        return;
+      }
+
+      // 4. Check for "complete / done / finish task N"
+      const completeMatch = lower.match(/^(?:mark\s+)?(?:complete|completed|done|finish|finished|check\s+off)\s+(?:task\s+|number\s+|#)?(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i) ||
+                            lower.match(/^(?:task|number|#)\s*(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:is\s+)?(?:done|complete|completed|finished)$/i);
+      if (completeMatch) {
+        const targetNum = WORD_TO_NUM[completeMatch[1].toLowerCase()] || parseInt(completeMatch[1], 10);
+        const task = tasks.find(t => t.num === targetNum);
+        if (task) {
+          task.completed = true;
+          task.running = false;
+          task.ringing = false;
+          syncAlarmLoop();
+          if (sequentialMode) startNextSequentialTimer();
+          saveTasksToStorage();
+          renderTasks();
+          const msg = `✅ Marked **Task #${task.num}: "${task.title}"** as completed!`;
+          addChatMessage('bot', msg);
+          speakBotText(`Marked task number ${task.num} as completed.`);
+        } else {
+          addChatMessage('bot', `⚠️ I couldn't find **Task #${targetNum}** on your list.`);
+        }
+        renderChatMessages();
+        return;
+      }
+
+      // 5. Check for "delete / remove task N"
+      const deleteMatch = lower.match(/^(?:delete|remove|cancel)\s+(?:task\s+|number\s+|#)?(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i);
+      if (deleteMatch) {
+        const targetNum = WORD_TO_NUM[deleteMatch[1].toLowerCase()] || parseInt(deleteMatch[1], 10);
+        const idx = tasks.findIndex(t => t.num === targetNum);
+        if (idx !== -1) {
+          const removed = tasks.splice(idx, 1)[0];
+          syncAlarmLoop();
+          saveTasksToStorage();
+          renderTasks();
+          addChatMessage('bot', `🗑️ Removed **Task #${removed.num}: "${removed.title}"** from your list.`);
+          speakBotText(`Deleted task number ${removed.num}.`);
+        } else {
+          addChatMessage('bot', `⚠️ I couldn't find **Task #${targetNum}** to delete.`);
+        }
+        renderChatMessages();
+        return;
+      }
+
+      // 6. Check for "start / pause / reset task N"
+      const timerControlMatch = lower.match(/^(start|resume|run|pause|stop|reset|restart)\s+(?:timer\s+for\s+)?(?:task\s+|number\s+|#)?(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i);
+      if (timerControlMatch) {
+        const action = timerControlMatch[1].toLowerCase();
+        const targetNum = WORD_TO_NUM[timerControlMatch[2].toLowerCase()] || parseInt(timerControlMatch[2], 10);
+        const task = tasks.find(t => t.num === targetNum);
+        if (!task) {
+          addChatMessage('bot', `⚠️ I couldn't find **Task #${targetNum}**.`);
+          renderChatMessages();
+          return;
+        }
+        if (task.totalSeconds <= 0) {
+          task.totalSeconds = 300;
+          task.remainingSeconds = 300;
+        }
+        if (action === 'start' || action === 'resume' || action === 'run') {
+          task.completed = false;
+          task.ringing = false;
+          if (task.remainingSeconds <= 0) task.remainingSeconds = task.totalSeconds;
+          task.running = true;
+          addChatMessage('bot', `▶ Started timer for **Task #${task.num}: "${task.title}"** (${formatDuration(task.remainingSeconds)}).`);
+          speakBotText(`Started timer for task number ${task.num}.`);
+        } else if (action === 'pause' || action === 'stop') {
+          task.running = false;
+          task.ringing = false;
+          addChatMessage('bot', `⏸ Paused timer for **Task #${task.num}: "${task.title}"** at ${formatDuration(task.remainingSeconds)}.`);
+          speakBotText(`Paused task number ${task.num}.`);
+        } else if (action === 'reset' || action === 'restart') {
+          task.ringing = false;
+          task.remainingSeconds = task.totalSeconds;
+          task.running = true;
+          addChatMessage('bot', `🔄 Reset and restarted timer for **Task #${task.num}: "${task.title}"** (${formatDuration(task.totalSeconds)}).`);
+          speakBotText(`Reset timer for task number ${task.num}.`);
+        }
+        syncAlarmLoop();
+        saveTasksToStorage();
+        renderTasks();
+        renderChatMessages();
+        return;
+      }
+
+      // 7. Check for "set / change timer for task N to X"
+      const updateTimerMatch = lower.match(/^(?:set|change|update)\s+(?:the\s+)?(?:timer\s+|time\s+)?(?:for\s+|on\s+)?(?:task\s+|number\s+|#)(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:timer\s+|time\s+)?(?:to\s+|for\s+)?(.+)$/i);
+      if (updateTimerMatch) {
+        const targetNum = WORD_TO_NUM[updateTimerMatch[1].toLowerCase()] || parseInt(updateTimerMatch[1], 10);
+        const timePhrase = updateTimerMatch[2];
+        const task = tasks.find(t => t.num === targetNum);
+        if (task) {
+          const parsedTime = extractTimeFromTaskSegment('placeholder ' + timePhrase);
+          if (parsedTime.totalSeconds > 0) {
+            task.totalSeconds = parsedTime.totalSeconds;
+            task.remainingSeconds = parsedTime.totalSeconds;
+            task.targetClockLabel = parsedTime.targetClockLabel;
+            task.ringing = false;
+            task.completed = false;
+            task.running = shouldAutoStart;
+            syncAlarmLoop();
+            saveTasksToStorage();
+            renderTasks();
+            addChatMessage('bot', `⏱️ Updated **Task #${task.num}: "${task.title}"** timer to **${formatDurationReadable(task.totalSeconds)}**${task.running ? ' and started countdown!' : '.'}`);
+            speakBotText(`Updated task ${task.num} timer to ${formatDurationReadable(task.totalSeconds)}.`);
+            renderChatMessages();
+            return;
+          }
+        }
+      }
+
+      // 8. Check for bulk commands ("start all", "pause all", "clear all", "clear completed")
+      if (/^(start\s+all|run\s+all)/i.test(lower)) {
+        startAllTimers();
+        addChatMessage('bot', '▶ Started all pending task timers!');
+        renderChatMessages();
+        return;
+      }
+      if (/^(pause\s+all|stop\s+all)/i.test(lower)) {
+        pauseAllTimers();
+        addChatMessage('bot', '⏸ Paused all running timers.');
+        renderChatMessages();
+        return;
+      }
+      if (/^clear\s+all/i.test(lower)) {
+        tasks = [];
+        syncAlarmLoop();
+        saveTasksToStorage();
+        renderTasks();
+        addChatMessage('bot', '🗑️ Cleared all tasks from your list.');
+        speakBotText('Cleared all tasks.');
+        renderChatMessages();
+        return;
+      }
+      if (/^clear\s+(?:completed|done)/i.test(lower)) {
+        clearCompletedTasks();
+        addChatMessage('bot', '🧹 Cleared all completed tasks.');
+        renderChatMessages();
+        return;
+      }
+
+      // 9. Parse Numbered List of Tasks (1... 2... 3...)
+      let itemsToCreate = parseNumberedTasksFromInput(text);
+
+      // If no explicit numbers were found, treat as single or comma/and-separated new task(s)
+      if (itemsToCreate.length === 0) {
+        const cleanedSingle = text.replace(/^(?:add\s+task|add|note\s+down|remind\s+me\s+to|new\s+task)\s+/i, '');
+        const extracted = extractTimeFromTaskSegment(cleanedSingle);
+        itemsToCreate.push({
+          num: getNextTaskNumber(),
+          title: extracted.cleanTitle,
+          totalSeconds: extracted.totalSeconds,
+          targetClockLabel: extracted.targetClockLabel
+        });
+      }
+
+      // Create or update tasks by number
+      const createdSummaries = [];
+      itemsToCreate.forEach((item, index) => {
+        const existingIndex = tasks.findIndex(t => t.num === item.num);
+        const startNow = shouldAutoStart && item.totalSeconds > 0 && (!sequentialMode || index === 0);
+
+        const taskObj = {
+          id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+          num: item.num,
+          title: item.title,
+          totalSeconds: item.totalSeconds,
+          remainingSeconds: item.totalSeconds,
+          targetClockLabel: item.targetClockLabel,
+          running: startNow,
+          completed: false,
+          ringing: false,
+          source: source,
+          createdAt: Date.now() + index
+        };
+
+        if (existingIndex !== -1) {
+          // Replace existing task with same number
+          taskObj.id = tasks[existingIndex].id;
+          tasks[existingIndex] = taskObj;
+        } else {
+          tasks.push(taskObj);
+        }
+
+        const timeDesc = item.totalSeconds > 0
+          ? (item.targetClockLabel
+              ? `⏰ Alarm at ${item.targetClockLabel} (${formatDurationReadable(item.totalSeconds)})`
+              : `⏱️ Timer: ${formatDurationReadable(item.totalSeconds)}${startNow ? ' (Running)' : ''}`)
+          : '📌 No timer set';
+        createdSummaries.push(`• **#${item.num} ${item.title}** — ${timeDesc}`);
+      });
+
+      // Keep tasks sorted by their task number
+      tasks.sort((a, b) => a.num - b.num);
+      saveTasksToStorage();
+      renderTasks();
+
+      const botReply = `Noted down **${itemsToCreate.length} task${itemsToCreate.length > 1 ? 's' : ''}** according to your numbers:\n` +
+        createdSummaries.join('\n');
+      addChatMessage('bot', botReply);
+
+      const timedCount = itemsToCreate.filter(i => i.totalSeconds > 0).length;
+      if (timedCount > 0) {
+        speakBotText(`Noted ${itemsToCreate.length} task${itemsToCreate.length > 1 ? 's' : ''} and started ${timedCount} timer${timedCount > 1 ? 's' : ''}.`);
+      } else {
+        speakBotText(`Noted ${itemsToCreate.length} task${itemsToCreate.length > 1 ? 's' : ''} on your list.`);
+      }
+
+      renderChatMessages();
+    }
+
+    function handleChatSubmit(event) {
+      event.preventDefault();
+      const inputEl = document.getElementById('chat-input');
+      if (!inputEl) return;
+      const val = inputEl.value.trim();
+      if (!val) return;
+      inputEl.value = '';
+      speechTranscriptBuffer = '';
+      processUserMessage(val, 'text');
+    }
+
+    // =========================================================================
+    // TASK ACTIONS & CONTROLS
+    // =========================================================================
+    function toggleTaskCompleted(taskId) {
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      task.completed = !task.completed;
+      if (task.completed) {
+        task.running = false;
+        task.ringing = false;
+        if (sequentialMode) startNextSequentialTimer();
+      }
+      syncAlarmLoop();
+      saveTasksToStorage();
+      renderTasks();
+    }
+
+    function toggleTaskTimer(taskId) {
+      ensureAudioContext();
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      if (task.ringing) {
+        task.ringing = false;
+        task.running = false;
+        syncAlarmLoop();
+        saveTasksToStorage();
+        renderTasks();
+        return;
+      }
+
+      if (task.totalSeconds <= 0) {
+        // Default to 5 minutes if user clicks play on a task with no timer
+        task.totalSeconds = 300;
+        task.remainingSeconds = 300;
+      } else if (task.remainingSeconds <= 0) {
+        task.remainingSeconds = task.totalSeconds;
+      }
+
+      task.completed = false;
+      task.running = !task.running;
+      saveTasksToStorage();
+      renderTasks();
+    }
+
+    function resetTaskTimer(taskId) {
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      task.ringing = false;
+      task.running = false;
+      task.remainingSeconds = task.totalSeconds > 0 ? task.totalSeconds : 0;
+      syncAlarmLoop();
+      saveTasksToStorage();
+      renderTasks();
+    }
+
+    function addBonusMinute(taskId, secondsToAdd) {
+      ensureAudioContext();
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      task.ringing = false;
+      task.completed = false;
+      task.totalSeconds = Math.max(task.totalSeconds, task.remainingSeconds) + secondsToAdd;
+      task.remainingSeconds += secondsToAdd;
+      task.running = true;
+      syncAlarmLoop();
+      saveTasksToStorage();
+      renderTasks();
+    }
+
+    function deleteTaskById(taskId) {
+      tasks = tasks.filter(t => t.id !== taskId);
+      syncAlarmLoop();
+      saveTasksToStorage();
+      renderTasks();
+    }
+
+    function startAllTimers() {
+      ensureAudioContext();
+      let started = 0;
+      tasks.forEach(t => {
+        if (!t.completed && t.remainingSeconds > 0) {
+          t.running = true;
+          t.ringing = false;
+          started++;
+        }
+      });
+      syncAlarmLoop();
+      saveTasksToStorage();
+      renderTasks();
+      if (started > 0) {
+        showToast(`Started ${started} timer${started > 1 ? 's' : ''}!`, 'info');
+      } else {
+        showToast('No pending tasks with timers to start.', 'info');
+      }
+    }
+
+    function pauseAllTimers() {
+      tasks.forEach(t => {
+        t.running = false;
+        t.ringing = false;
+      });
+      syncAlarmLoop();
+      saveTasksToStorage();
+      renderTasks();
+      showToast('Paused all timers.', 'info');
+    }
+
+    function clearCompletedTasks() {
+      const before = tasks.length;
+      tasks = tasks.filter(t => !t.completed);
+      const removed = before - tasks.length;
+      syncAlarmLoop();
+      saveTasksToStorage();
+      renderTasks();
+      showToast(removed > 0 ? `Cleared ${removed} completed task${removed > 1 ? 's' : ''}.` : 'No completed tasks to clear.', 'info');
+    }
+
+    function renumberTasksSequentially() {
+      tasks.sort((a, b) => a.num - b.num);
+      tasks.forEach((t, idx) => {
+        t.num = idx + 1;
+      });
+      saveTasksToStorage();
+      renderTasks();
+      showToast('Tasks re-numbered sequentially from #1 to #' + tasks.length, 'info');
+    }
+
+    function toggleSequentialMode() {
+      sequentialMode = !sequentialMode;
+      const label = document.getElementById('seq-mode-label');
+      if (label) {
+        label.textContent = sequentialMode ? 'Sequential Queue' : 'Simultaneous';
+      }
+      showToast(
+        sequentialMode
+          ? 'Sequential Queue ON: Next numbered task timer starts when previous completes.'
+          : 'Simultaneous Mode ON: Multiple task timers can run together.',
+        'info'
+      );
+    }
+
+    function setTaskFilter(filter) {
+      currentFilter = filter;
+      const ids = ['all', 'pending', 'timed', 'completed'];
+      ids.forEach(k => {
+        const btn = document.getElementById('filter-' + k);
+        if (!btn) return;
+        if (k === filter) {
+          btn.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition';
+        } else {
+          btn.className = 'px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition';
+        }
+      });
+      renderTasks();
+    }
+
+    // =========================================================================
+    // MANUAL TASK FORM & EDIT MODAL
+    // =========================================================================
+    function toggleManualTaskForm() {
+      const wrap = document.getElementById('manual-task-form-wrap');
+      if (!wrap) return;
+      wrap.classList.toggle('hidden');
+      if (!wrap.classList.contains('hidden')) {
+        const numInput = document.getElementById('manual-num');
+        if (numInput) numInput.value = getNextTaskNumber();
+        const titleInput = document.getElementById('manual-title');
+        if (titleInput) titleInput.focus();
+      }
+    }
+
+    function handleManualTaskSubmit(event) {
+      event.preventDefault();
+      ensureAudioContext();
+      const numEl = document.getElementById('manual-num');
+      const titleEl = document.getElementById('manual-title');
+      const timeEl = document.getElementById('manual-time');
+
+      const num = numEl && numEl.value ? parseInt(numEl.value, 10) : getNextTaskNumber();
+      const title = titleEl ? titleEl.value.trim() : '';
+      const rawTime = timeEl ? timeEl.value.trim() : '';
+
+      if (!title) return;
+
+      let totalSeconds = 0;
+      let targetClockLabel = null;
+      if (rawTime) {
+        const parsed = extractTimeFromTaskSegment('task ' + rawTime);
+        totalSeconds = parsed.totalSeconds;
+        targetClockLabel = parsed.targetClockLabel;
+      }
+
+      const existingIdx = tasks.findIndex(t => t.num === num);
+      const newTask = {
+        id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        num,
+        title,
+        totalSeconds,
+        remainingSeconds: totalSeconds,
+        targetClockLabel,
+        running: totalSeconds > 0,
+        completed: false,
+        ringing: false,
+        source: 'text',
+        createdAt: Date.now()
+      };
+
+      if (existingIdx !== -1) {
+        newTask.id = tasks[existingIdx].id;
+        tasks[existingIdx] = newTask;
+      } else {
+        tasks.push(newTask);
+      }
+
+      tasks.sort((a, b) => a.num - b.num);
+      saveTasksToStorage();
+      renderTasks();
+
+      if (titleEl) titleEl.value = '';
+      if (timeEl) timeEl.value = '';
+      if (numEl) numEl.value = getNextTaskNumber();
+
+      addChatMessage('bot', `➕ Added **#${num} ${title}**${totalSeconds > 0 ? ` with timer (${formatDurationReadable(totalSeconds)})` : ''}.`);
+      renderChatMessages();
+    }
+
+    function openEditModal(taskId) {
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      document.getElementById('edit-task-id').value = task.id;
+      document.getElementById('edit-task-num').value = task.num;
+      document.getElementById('edit-task-title').value = task.title;
+      document.getElementById('edit-task-time-str').value = '';
+      document.getElementById('edit-modal').classList.remove('hidden');
+    }
+
+    function closeEditModal() {
+      document.getElementById('edit-modal').classList.add('hidden');
+    }
+
+    function setEditTimePreset(val) {
+      const el = document.getElementById('edit-task-time-str');
+      if (el) el.value = val;
+    }
+
+    function saveEditedTask(event) {
+      event.preventDefault();
+      ensureAudioContext();
+      const id = document.getElementById('edit-task-id').value;
+      const num = parseInt(document.getElementById('edit-task-num').value, 10);
+      const title = document.getElementById('edit-task-title').value.trim();
+      const timeStr = document.getElementById('edit-task-time-str').value.trim();
+
+      const task = tasks.find(t => t.id === id);
+      if (!task || !title) return;
+
+      task.num = isNaN(num) || num < 1 ? task.num : num;
+      task.title = title;
+
+      if (timeStr.toLowerCase() === 'none' || timeStr === '0') {
+        task.totalSeconds = 0;
+        task.remainingSeconds = 0;
+        task.targetClockLabel = null;
+        task.running = false;
+        task.ringing = false;
+      } else if (timeStr) {
+        const parsed = extractTimeFromTaskSegment('task ' + timeStr);
+        if (parsed.totalSeconds > 0) {
+          task.totalSeconds = parsed.totalSeconds;
+          task.remainingSeconds = parsed.totalSeconds;
+          task.targetClockLabel = parsed.targetClockLabel;
+          task.running = true;
+          task.ringing = false;
+          task.completed = false;
+        }
+      }
+
+      tasks.sort((a, b) => a.num - b.num);
+      syncAlarmLoop();
+      saveTasksToStorage();
+      renderTasks();
+      closeEditModal();
+      showToast(`Updated Task #${task.num}`, 'info');
+    }
+
+    // =========================================================================
+    // UI RENDERERS & HELPERS
+    // =========================================================================
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function formatMarkdownSimple(text) {
+      const escaped = escapeHtml(text);
+      return escaped
+        .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em class="text-indigo-200">$1</em>')
+        .replace(/\n/g, '<br/>');
+    }
+
+    function addChatMessage(sender, text, mode = 'text') {
+      chatMessages.push({
+        id: 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        sender,
+        text,
+        mode,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+    }
+
+    function clearChatHistory() {
+      chatMessages = [];
+      addChatMessage('bot', 'Chat history cleared! Give me numbered tasks by voice or text anytime.');
+      renderChatMessages();
+    }
+
+    function toggleCommandGuide() {
+      const guide = document.getElementById('command-guide');
+      if (guide) guide.classList.toggle('hidden');
+    }
+
+    function switchMobileTab(tab) {
+      const chatPanel = document.getElementById('chat-panel');
+      const tasksPanel = document.getElementById('tasks-panel');
+      const tabChatBtn = document.getElementById('tab-chat-btn');
+      const tabTasksBtn = document.getElementById('tab-tasks-btn');
+
+      if (tab === 'chat') {
+        chatPanel.classList.remove('hidden');
+        tasksPanel.classList.add('hidden', 'lg:flex');
+        tabChatBtn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white shadow transition';
+        tabTasksBtn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-md text-slate-300 hover:text-white transition';
+      } else {
+        chatPanel.classList.add('hidden', 'lg:flex');
+        tasksPanel.classList.remove('hidden');
+        tabTasksBtn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white shadow transition';
+        tabChatBtn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-md text-slate-300 hover:text-white transition';
+      }
+    }
+
+    function renderChatMessages() {
+      const container = document.getElementById('chat-messages');
+      if (!container) return;
+
+      container.innerHTML = chatMessages.map(msg => {
+        if (msg.sender === 'user') {
+          const badge = msg.mode === 'voice'
+            ? '<span class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-indigo-400/20 text-indigo-100">🎤 Voice</span>'
+            : '<span class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-indigo-400/20 text-indigo-100">⌨️ Text</span>';
+          return `
+            <div class="flex flex-col items-end">
+              <div class="max-w-[88%] rounded-2xl rounded-tr-sm bg-indigo-600 text-white px-3.5 py-2.5 text-xs sm:text-sm shadow">
+                <div class="flex items-center justify-end gap-2 mb-1">
+                  ${badge}
+                  <span class="text-[10px] text-indigo-200">${escapeHtml(msg.time)}</span>
+                </div>
+                <div class="leading-relaxed">${formatMarkdownSimple(msg.text)}</div>
+              </div>
+            </div>
+          `;
+        } else {
+          return `
+            <div class="flex items-start gap-2.5">
+              <div class="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs shrink-0 mt-0.5">
+                🤖
+              </div>
+              <div class="max-w-[88%] rounded-2xl rounded-tl-sm bg-slate-800/90 border border-slate-700/80 text-slate-200 px-3.5 py-2.5 text-xs sm:text-sm shadow">
+                <div class="flex items-center justify-between gap-3 mb-1">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-400">TaskBot</span>
+                  <span class="text-[10px] text-slate-400">${escapeHtml(msg.time)}</span>
+                </div>
+                <div class="leading-relaxed space-y-1">${formatMarkdownSimple(msg.text)}</div>
+              </div>
+            </div>
+          `;
+        }
+      }).join('');
+
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function renderTasks() {
+      const listEl = document.getElementById('task-list');
+      if (!listEl) return;
+
+      // Update KPI counters
+      const total = tasks.length;
+      const running = tasks.filter(t => t.running && !t.completed).length;
+      const ringing = tasks.filter(t => t.ringing && !t.completed).length;
+      const completed = tasks.filter(t => t.completed).length;
+
+      document.getElementById('stat-total').textContent = total;
+      document.getElementById('stat-running').textContent = running;
+      document.getElementById('stat-ringing').textContent = ringing;
+      document.getElementById('stat-completed').textContent = completed;
+      const mobileCount = document.getElementById('mobile-task-count');
+      if (mobileCount) mobileCount.textContent = total;
+
+      // Filter tasks
+      let filtered = [...tasks].sort((a, b) => a.num - b.num);
+      if (currentFilter === 'pending') {
+        filtered = filtered.filter(t => !t.completed);
+      } else if (currentFilter === 'timed') {
+        filtered = filtered.filter(t => t.totalSeconds > 0);
+      } else if (currentFilter === 'completed') {
+        filtered = filtered.filter(t => t.completed);
+      }
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = `
+          <div class="text-center py-12 px-4 rounded-xl border border-dashed border-slate-800 bg-slate-950/30">
+            <div class="text-3xl mb-2">🎙️</div>
+            <p class="text-sm font-semibold text-slate-300">No tasks in this view yet</p>
+            <p class="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+              Use the microphone or chat box on the left to say:<br/>
+              <span class="text-indigo-300 italic">"1. First task for 5 minutes 2. Second task for 10 minutes"</span>
+            </p>
+          </div>
+        `;
+        return;
+      }
+
+      listEl.innerHTML = filtered.map(task => {
+        const hasTimer = task.totalSeconds > 0;
+        const pct = hasTimer
+          ? Math.min(100, Math.max(0, Math.round(((task.totalSeconds - task.remainingSeconds) / task.totalSeconds) * 100)))
+          : 0;
+
+        let cardBorder = 'border-slate-800 bg-slate-950/60';
+        if (task.ringing && !task.completed) {
+          cardBorder = 'border-red-500 bg-red-950/30 ring-2 ring-red-500/40';
+        } else if (task.running && !task.completed) {
+          cardBorder = 'border-indigo-500/60 bg-indigo-950/15';
+        } else if (task.completed) {
+          cardBorder = 'border-slate-800/60 bg-slate-950/30 opacity-70';
+        }
+
+        const sourceBadge = task.source === 'voice'
+          ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">🎤 Voice</span>'
+          : '<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">⌨️ Text</span>';
+
+        const clockBadge = task.targetClockLabel
+          ? `<span class="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">⏰ Alarm: ${escapeHtml(task.targetClockLabel)}</span>`
+          : '';
+
+        return `
+          <div class="rounded-xl border ${cardBorder} p-3.5 transition shadow-sm">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <!-- Left: Checkbox, Task # Badge, Title -->
+              <div class="flex items-start sm:items-center gap-3 min-w-0">
+                <button
+                  type="button"
+                  onclick="toggleTaskCompleted('${task.id}')"
+                  class="w-6 h-6 rounded-lg border ${task.completed ? 'bg-emerald-500 border-emerald-500 text-slate-950' : 'border-slate-600 hover:border-indigo-400 text-transparent'} flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 transition"
+                  title="Mark Completed"
+                >
+                  ✓
+                </button>
+
+                <span class="px-2.5 py-1 rounded-lg bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 font-mono-timer font-bold text-xs shrink-0">
+                  #${task.num}
+                </span>
+
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <p class="font-semibold text-sm ${task.completed ? 'line-through text-slate-400' : 'text-white'} break-words">
+                      ${escapeHtml(task.title)}
+                    </p>
+                    ${sourceBadge}
+                    ${clockBadge}
+                    ${task.ringing && !task.completed ? '<span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-red-600 text-white animate-pulse">🔔 Ringing!</span>' : ''}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right: Timer Display & Controls -->
+              <div class="flex items-center justify-between sm:justify-end gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800/80">
+                <!-- Countdown Clock -->
+                <div class="flex items-center gap-1.5 bg-slate-900 border ${task.ringing ? 'border-red-500 text-red-300' : (task.running ? 'border-amber-500/50 text-amber-300' : 'border-slate-800 text-slate-300')} px-2.5 py-1 rounded-lg">
+                  <span class="font-mono-timer font-bold text-sm">
+                    ${hasTimer ? formatDuration(task.remainingSeconds) : '--:--'}
+                  </span>
+                </div>
+
+                <!-- Timer Control Buttons -->
+                <div class="flex items-center gap-1">
+                  ${task.ringing ? `
+                    <button
+                      type="button"
+                      onclick="toggleTaskTimer('${task.id}')"
+                      class="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition"
+                    >
+                      Stop Ring
+                    </button>
+                  ` : `
+                    <button
+                      type="button"
+                      onclick="toggleTaskTimer('${task.id}')"
+                      class="px-2.5 py-1 rounded-lg ${task.running ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'} hover:opacity-90 text-xs font-semibold transition"
+                      title="${task.running ? 'Pause Timer' : 'Start Timer'}"
+                    >
+                      ${task.running ? '⏸ Pause' : '▶ Start'}
+                    </button>
+                  `}
+
+                  <button
+                    type="button"
+                    onclick="addBonusMinute('${task.id}', 60)"
+                    class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition"
+                    title="Add 1 Minute"
+                  >
+                    +1m
+                  </button>
+
+                  <button
+                    type="button"
+                    onclick="resetTaskTimer('${task.id}')"
+                    class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs transition"
+                    title="Reset Timer"
+                  >
+                    🔄
+                  </button>
+
+                  <button
+                    type="button"
+                    onclick="openEditModal('${task.id}')"
+                    class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs transition"
+                    title="Edit Task or Timer"
+                  >
+                    ✏️
+                  </button>
+
+                  <button
+                    type="button"
+                    onclick="deleteTaskById('${task.id}')"
+                    class="p-1.5 rounded-lg bg-slate-800 hover:bg-red-950/60 text-slate-400 hover:text-red-300 border border-slate-700 text-xs transition"
+                    title="Delete Task"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            ${hasTimer ? `
+              <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2.5">
+                <div
+                  class="h-full transition-all duration-500 ${task.ringing ? 'bg-red-500' : (task.running ? 'bg-indigo-500' : 'bg-slate-600')}"
+                  style="width: ${pct}%"
+                ></div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+      const toast = document.createElement('div');
+      const colorClass = type === 'warning'
+        ? 'bg-amber-950/95 border-amber-500/50 text-amber-200'
+        : 'bg-slate-900/95 border-indigo-500/50 text-slate-100';
+      toast.className = `pointer-events-auto px-3.5 py-2.5 rounded-xl border ${colorClass} shadow-xl text-xs font-medium flex items-center justify-between gap-2 transition`;
+      toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 3600);
+    }
+
+    window.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
